@@ -1,40 +1,56 @@
 <?php
 
+declare(strict_types=1);
+
 class FinalResult {
-    function results($f) {
-        $d = fopen($f, "r");
-        $h = fgetcsv($d);
-        $rcs = [];
-        while(!feof($d)) {
-            $r = fgetcsv($d);
-            if(count($r) == 16) {
-                $amt = !$r[8] || $r[8] == "0" ? 0 : (float) $r[8];
-                $ban = !$r[6] ? "Bank account number missing" : (int) $r[6];
-                $bac = !$r[2] ? "Bank branch code missing" : $r[2];
-                $e2e = !$r[10] && !$r[11] ? "End to end id missing" : $r[10] . $r[11];
-                $rcd = [
+    function __construct(
+        private readonly int $record_length = 16,
+        private readonly int $bank_code_idx = 0,
+        private readonly int $branch_code_idx = 2,
+        private readonly int $account_number_idx = 6,
+        private readonly int $account_name_idx = 7,
+        private readonly int $amount_idx = 8,
+        private readonly int $e2e_id_1_idx = 10,
+        private readonly int $e2e_id_2_idx = 11,
+    ) {
+    }
+
+    function results(string $filename) {
+        if (!file_exists($filename)) {
+            throw new Exception("results file does not exist");
+        }
+        $file = fopen($filename, "r");
+        if ($file === false) {
+            throw new Exception("could not open results file");
+        }
+        [$currency, $failure_code, $failure_message] = fgetcsv($file);
+        $records = [];
+        while (!feof($file)) {
+            $record = fgetcsv($file);
+            if (count($record) === $this->record_length) {
+                $amount = !$record[$this->amount_idx] || $record[$this->amount_idx] === "0" ? 0 : (float) $record[$this->amount_idx];
+                $account_number = !$record[$this->account_number_idx] ? "Bank account number missing" : (int) $record[$this->account_number_idx];
+                $branch_code = !$record[$this->branch_code_idx] ? "Bank branch code missing" : $record[$this->branch_code_idx];
+                $e2e_id = !$record[$this->e2e_id_1_idx] && !$record[$this->e2e_id_2_idx] ? "End to end id missing" : $record[$this->e2e_id_1_idx] . $record[$this->e2e_id_2_idx];
+                $records[] = [
                     "amount" => [
-                        "currency" => $h[0],
-                        "subunits" => (int) ($amt * 100)
+                        "currency" => $currency,
+                        "subunits" => (int) ($amount * 100)
                     ],
-                    "bank_account_name" => str_replace(" ", "_", strtolower($r[7])),
-                    "bank_account_number" => $ban,
-                    "bank_branch_code" => $bac,
-                    "bank_code" => $r[0],
-                    "end_to_end_id" => $e2e,
+                    "bank_account_name" => str_replace(" ", "_", strtolower($record[$this->account_name_idx])),
+                    "bank_account_number" => $account_number,
+                    "bank_branch_code" => $branch_code,
+                    "bank_code" => $record[$this->bank_code_idx],
+                    "end_to_end_id" => $e2e_id,
                 ];
-                $rcs[] = $rcd;
             }
         }
-        $rcs = array_filter($rcs);
+        fclose($file);
         return [
-            "filename" => basename($f),
-            "document" => $d,
-            "failure_code" => $h[1],
-            "failure_message" => $h[2],
-            "records" => $rcs
+            "filename" => basename($filename),
+            "failure_code" => $failure_code,
+            "failure_message" => $failure_message,
+            "records" => $records
         ];
     }
 }
-
-?>
